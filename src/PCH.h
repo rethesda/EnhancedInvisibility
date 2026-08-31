@@ -4,28 +4,16 @@
 #define NOMINMAX
 
 #include "RE/Skyrim.h"
-#include "REX/REX/Singleton.h"
+#include "REX/REX.h"
 #include "SKSE/SKSE.h"
 
-#include "ClibUtil/string.hpp"
-#include "ClibUtil/numeric.hpp"
-#include "ClibUtil/simpleINI.hpp"
 #include <spdlog/sinks/basic_file_sink.h>
 #include <xbyak/xbyak.h>
-
-#define DLLEXPORT __declspec(dllexport)
-
-namespace logger = SKSE::log;
-namespace string = clib_util::string;
-namespace numeric = clib_util::numeric;
-namespace ini = clib_util::ini;
 
 using namespace std::literals;
 
 namespace stl
 {
-	using namespace SKSE::stl;
-
 	void asm_replace(std::uintptr_t a_from, std::size_t a_size, std::uintptr_t a_to);
 
 	template <class T>
@@ -37,7 +25,7 @@ namespace stl
 	template <class T>
 	void write_thunk_call(std::uintptr_t a_src)
 	{
-		auto& trampoline = SKSE::GetTrampoline();
+		auto& trampoline = REL::GetTrampoline();
 	    T::func = trampoline.write_call<5>(a_src, T::thunk);
 	}
 
@@ -49,18 +37,34 @@ namespace stl
 	}
 }
 
+namespace Runtime
+{
+	inline constexpr REL::Version SSE_1_7_99(1, 7, 99, 0);
+	inline constexpr REL::Version MIN_ADDRESS_LIBRARY_V5 = SSE_1_7_99;
+
+	[[nodiscard]] inline bool IsAtLeast1_7_99() noexcept
+	{
+		static bool result = REX::FModule::GetExecutingModule().GetFileVersion() >= Runtime::SSE_1_7_99;
+		return result;
+	}
+}
+
 #ifdef SKYRIM_AE
 #	define OFFSET(se, ae) ae
 #	define OFFSET_VTABLE(se, vr) se
 #	define OFFSET_3(se, ae, vr) ae
+#	define OFFSET_VERSIONED(se, ae, ae1799, vr) \
+		(Runtime::IsAtLeast1_7_99() ? (ae1799) : (ae))
 #elif SKYRIMVR
 #	define OFFSET(se, ae) se
 #	define OFFSET_VTABLE(se, vr) vr
 #	define OFFSET_3(se, ae, vr) vr
+#	define OFFSET_VERSIONED(se, ae, ae1799, vr) vr
 #else
 #	define OFFSET(se, ae) se
 #	define OFFSET_VTABLE(se, vr) se
 #	define OFFSET_3(se, ae, vr) se
+#	define OFFSET_VERSIONED(se, ae, ae1799, vr) se
 #endif
 
 #include "Version.h"

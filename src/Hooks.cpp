@@ -5,25 +5,22 @@ namespace EnhancedInvisibility
 {
 	namespace MakeUninterrupted
 	{
-		struct detail
+		void detail::dispel_invisibility(RE::Actor* a_actor, RE::EffectArchetype a_archetype)
 		{
-			static void dispel_invisibility(RE::Actor* a_actor, RE::EffectArchetype a_archetype)
-			{
-				if ((a_actor->flags & 2) != 0 && a_archetype != RE::EffectArchetype::kInvisibility) {
-					a_actor->DispelEffectsWithArchetype(RE::EffectArchetype::kInvisibility, true);
-				}
+			if ((a_actor->flags & 2) != 0 && a_archetype != RE::EffectArchetype::kInvisibility) {
+				a_actor->DispelEffectsWithArchetype(RE::EffectArchetype::kInvisibility, true);
 			}
+		}
 
-			static void dispel_ethereal_form(RE::Actor* a_actor, RE::EffectArchetype a_archetype)
-			{
-				if (!a_actor->IsGhost()) {
-					return;
-				}
-				if (a_archetype != RE::EffectArchetype::kEtherealize) {
-					a_actor->DispelEffectsWithArchetype(RE::EffectArchetype::kEtherealize, true);
-				}
+		void detail::dispel_ethereal_form(RE::Actor* a_actor, RE::EffectArchetype a_archetype)
+		{
+			if (!a_actor->IsGhost()) {
+				return;
 			}
-		};
+			if (a_archetype != RE::EffectArchetype::kEtherealize) {
+				a_actor->DispelEffectsWithArchetype(RE::EffectArchetype::kEtherealize, true);
+			}
+		}
 
 		namespace Activate
 		{
@@ -86,13 +83,13 @@ namespace EnhancedInvisibility
 
 			if (invisState == DoNotDispel::kOnActivate || etherealState == DoNotDispel::kOnActivate) {
 				Activate::Install();
-				
-				logger::info("Installing Uninterrupted Actions [Activate] hook");
+
+				REX::INFO("Installing Uninterrupted Actions [Activate] hook");
 			}
 			if (invisState == DoNotDispel::kOnAll || etherealState == DoNotDispel::kOnAll) {
 				All::Install();
-				
-				logger::info("Installing Uninterrupted Actions [All] hook");
+
+				REX::INFO("Installing Uninterrupted Actions [All] hook");
 			}
 		}
 	}
@@ -130,20 +127,13 @@ namespace EnhancedInvisibility
 				REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(41659, 42742), OFFSET(0x526, 0x67B) };
 				stl::write_thunk_call<CalculateDetection>(target.address());
 
-				logger::info("Installing Make Undetectable hook");
+				REX::INFO("Installing Make Undetectable hook");
 			}
 		}
 	}
 
 	namespace Refraction
 	{
-		void set_refraction(RE::NiAVObject* a_object, bool a_enable, float a_power, bool a_unk04)
-		{
-			using func_t = decltype(&set_refraction);
-			static REL::Relocation<func_t> func{ RELOCATION_ID(99868, 106513) };
-			return func(a_object, a_enable, a_power, a_unk04);
-		}
-
 		struct SetShaderFlag
 		{
 			static void thunk(RE::BSShaderProperty*, RE::BSShaderProperty::EShaderPropertyFlag8, bool)
@@ -161,7 +151,7 @@ namespace EnhancedInvisibility
 				REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(99868, 106513), OFFSET(0x97, 0xAE) };
 				stl::write_thunk_call<SetShaderFlag>(target.address());
 
-				logger::info("Installing Refraction Shader Fix");
+				REX::INFO("Installing Refraction Shader Fix");
 			}
 		}
 	}
@@ -181,7 +171,7 @@ namespace EnhancedInvisibility
 						const auto actor = user ? user->As<RE::Actor>() : nullptr;
 
 						if (actor && actor->extraList.HasType<RE::ExtraRefractionProperty>()) {  //doesn't matter what refraction power is
-							Refraction::set_refraction(a_this->decal.get(), true, 1.0f, true);
+							a_this->decal->SetRefraction(true, 1.0f, true);	
 						}
 					}
 				}
@@ -202,9 +192,9 @@ namespace EnhancedInvisibility
 				static void thunk(RE::ExtraDataList* a_extraList, const RE::NiPointer<RE::NiAVObject>& a_projectile3D, RE::BGSProjectile* a_projectile)
 				{
 					if (a_projectile3D) {
-						const auto actor = stl::adjust_pointer<RE::Actor>(a_extraList, -0x70);
+						const auto actor = REX::ADJUST_POINTER<RE::Actor>(a_extraList, -static_cast<ptrdiff_t>(offsetof(RE::Actor, RE::Actor::extraList)));
 						if (actor && actor->extraList.HasType<RE::ExtraRefractionProperty>()) {
-							Refraction::set_refraction(a_projectile3D.get(), true, 0.5f, true);
+							a_projectile3D->SetRefraction(true, 0.5f, true);
 						}
 					}
 
@@ -216,7 +206,7 @@ namespace EnhancedInvisibility
 			void Install()
 			{
 				REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(42856, 44031) };
-				stl::write_thunk_call<AddAttachedArrow3D>(target.address() + OFFSET_3(0x53A, 0x688, 0x737));
+				stl::write_thunk_call<AddAttachedArrow3D>(target.address() + OFFSET_VERSIONED(0x53A, 0x688, 0x5C9, 0x737));
 			}
 		}
 
@@ -231,9 +221,8 @@ namespace EnhancedInvisibility
 							if (auto& model = bipedObject.partClone) {
 								RE::BSVisit::TraverseScenegraphGeometries(model.get(), [&](RE::BSGeometry* a_geometry) -> RE::BSVisit::BSVisitControl {
 									if (const auto shape = a_geometry->AsTriShape(); shape) {
-										const auto effectProp = netimmerse_cast<RE::BSEffectShaderProperty*>(a_geometry->properties[RE::BSGeometry::States::kEffect].get());
-										const auto alphaProp = netimmerse_cast<RE::NiAlphaProperty*>(a_geometry->properties[RE::BSGeometry::States::kProperty].get());
-
+										const auto effectProp = netimmerse_cast<RE::BSEffectShaderProperty*>(a_geometry->shaderProperty.get());
+										const auto alphaProp = a_geometry->alphaProperty.get();
 										if (effectProp && alphaProp && alphaProp->GetAlphaBlending()) {
 											shape->SetAppCulled(a_power > 0.0f);
 										}
@@ -296,29 +285,27 @@ namespace EnhancedInvisibility
 			if (settings->GetAllowRefractArrows()) {
 				Arrows::Install();
 
-				logger::info("Installing Dynamic Blood Refraction Fix");
+				REX::INFO("Installing Dynamic Blood Refraction Fix");
 			}
 			if (settings->GetAllowRefractBlood()) {
 				Blood::Install();
 
-				logger::info("Installing Dynamic Attached Arrow Refraction Fix");
+				REX::INFO("Installing Dynamic Attached Arrow Refraction Fix");
 			}
 			if (settings->GetAllowAlphaBlendFix()) {
 				AlphaBlendedArmor::Install();
 
-				logger::info("Installing Armor Alpha Blend Fix");
+				REX::INFO("Installing Armor Alpha Blend Fix");
 			}
 		}
 	}
 
 	void Install()
 	{
-		logger::info("{:*^30}", "HOOKS");
+		REX::INFO("{:*^30}", "HOOKS");
 
 		Settings::GetSingleton()->LoadSettings();
 
-		SKSE::AllocTrampoline(14*4);
-		
 		Refraction::Install();
 		MakeInvisible::Install();
 
@@ -331,7 +318,7 @@ namespace EnhancedInvisibility
 
 			std::error_code ec;
 			if (std::filesystem::exists(invisibilityDLL, ec) || std::filesystem::exists(etherealFormDLL, ec)) {
-				logger::info("UninterruptedEtherealForm/UninterruptedInvisibility plugins detected, skipping hooks");
+				REX::INFO("UninterruptedEtherealForm/UninterruptedInvisibility plugins detected, skipping hooks");
 				return;
 			}
 		}
